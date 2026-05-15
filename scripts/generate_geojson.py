@@ -10,6 +10,8 @@ import sqlite3
 from pathlib import Path
 
 import geopandas as gpd
+from shapely.affinity import translate
+from shapely.geometry import MultiPolygon, Polygon
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -42,6 +44,63 @@ def generate_world_geojson(admin0_path: Path, output_path: Path) -> None:
     gdf.to_file(output_path, driver="GeoJSON")
     size_kb = output_path.stat().st_size / 1024
     print(f"  world.geojson: {size_kb:.0f} KB")
+
+
+def _unwrap_ring(coords: list) -> list:
+    """Adjust ring vertices so no two consecutive vertices are > 180° apart.
+
+    This keeps a polygon that crosses the antimeridian on one side of the map
+    (with coordinates outside the normal -180/180 range) rather than splitting it.
+    """
+    result = []
+    prev_x = None
+    for coord in coords:
+        x = coord[0]
+        if prev_x is not None:
+            while x - prev_x > 180:
+                x -= 360
+            while prev_x - x > 180:
+                x += 360
+        result.append((x,) + coord[1:])
+        prev_x = x
+    return result
+
+
+def _unwrap_polygon(polygon: Polygon) -> Polygon:
+    exterior = _unwrap_ring(list(polygon.exterior.coords))
+    interiors = [_unwrap_ring(list(ring.coords)) for ring in polygon.interiors]
+    return Polygon(exterior, interiors)
+
+
+def fix_antimeridian(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Unwrap geometries that cross the antimeridian so they render as one
+    contiguous shape on the correct side of the map.
+
+    Each polygon part is shifted (by ±360°) to be within 180° of the largest
+    polygon in the geometry, keeping everything on one side of the map.
+    """
+    def fix_geom(geom):
+        if geom is None:
+            return None
+        if geom.geom_type == "Polygon":
+            return _unwrap_polygon(geom)
+        if geom.geom_type == "MultiPolygon":
+            parts = list(geom.geoms)
+            anchor_x = max(parts, key=lambda p: p.area).centroid.x
+            result = []
+            for poly in parts:
+                cx = poly.centroid.x
+                if cx - anchor_x > 180:
+                    poly = translate(poly, xoff=-360)
+                elif anchor_x - cx > 180:
+                    poly = translate(poly, xoff=360)
+                result.append(_unwrap_polygon(poly))
+            return MultiPolygon(result)
+        return geom
+
+    gdf = gdf.copy()
+    gdf["geometry"] = gdf["geometry"].apply(fix_geom)
+    return gdf
 
 
 def add_label_points(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -88,6 +147,7 @@ def generate_country_geojsons(admin1_path: Path, output_dir: Path, db_path: Path
             available = [c for c in output_cols if c in group.columns]
             export2 = group[available].copy()
             export2 = add_label_points(export2)
+            export2 = fix_antimeridian(export2)
             out_path_2 = output_dir / f"{code}_2.geojson"
             export2.to_file(out_path_2, driver="GeoJSON")
 
@@ -114,6 +174,7 @@ def generate_country_geojsons(admin1_path: Path, output_dir: Path, db_path: Path
                 keep_cols = ["name", "adm1_code", "type_en", "geometry"]
                 dissolved = dissolved[keep_cols].copy()
                 dissolved = add_label_points(dissolved)
+                dissolved = fix_antimeridian(dissolved)
 
                 out_path_1 = output_dir / f"{code}_1.geojson"
                 dissolved.to_file(out_path_1, driver="GeoJSON")
@@ -125,6 +186,7 @@ def generate_country_geojsons(admin1_path: Path, output_dir: Path, db_path: Path
             available = [c for c in output_cols if c in group.columns]
             export = group[available].copy()
             export = add_label_points(export)
+            export = fix_antimeridian(export)
 
             out_path = output_dir / f"{code}.geojson"
             export.to_file(out_path, driver="GeoJSON")
