@@ -44,8 +44,8 @@ from corrections import DEFAULT_LEVEL_1, REGION_OVERRIDES
 MIN_SUBDIVISIONS = 2  # Skip countries with fewer than this many subdivisions
 
 # Thresholds for detecting two-level countries
-MIN_REGIONS = 5         # Country must have at least this many distinct regions
-MIN_LEVEL_RATIO = 2.5   # At least 2.5x more subs than regions
+MIN_REGION_COVERAGE = 0.5  # At least 50% of subdivisions must have a region value
+MIN_LEVEL_RATIO = 2.5      # At least 2.5x more subs (with region) than distinct regions
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS countries (
@@ -160,16 +160,24 @@ def detect_two_level_countries(grouped: dict) -> dict[str, list[str]]:
     """
     two_level = {}
     for code, rows in grouped.items():
-        regions = set()
-        for r in rows:
-            region = get_region(r) or best_name(r)
-            regions.add(region)
-
-        n_regions = len(regions)
         n_subs = len(rows)
 
-        if n_regions >= MIN_REGIONS and n_subs / n_regions >= MIN_LEVEL_RATIO:
-            two_level[code] = sorted(regions)
+        # Only consider rows that have actual region data (no name fallback)
+        regions = set()
+        for r in rows:
+            region = get_region(r)
+            if region:
+                regions.add(region)
+
+        n_with_region = sum(1 for r in rows if get_region(r))
+        coverage = n_with_region / n_subs
+
+        if coverage < MIN_REGION_COVERAGE:
+            continue
+        if n_with_region / len(regions) < MIN_LEVEL_RATIO:
+            continue
+
+        two_level[code] = sorted(regions)
 
     return two_level
 
