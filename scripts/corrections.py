@@ -12,6 +12,6 @@ REGION_OVERRIDES: dict[str, str] = {
     "JPN-1827": "Kyushu",         # Saga Prefecture
     "JPN-3500": "Kyushu",         # Nagasaki Prefecture
     "CHN-1178": "East China",     # Fujian
-    "IND-20012": "North India",   # Ladakh
-    "IND-2474": "South India",    # Andaman and Nicobar Islands
+    "IND-20012": "North",         # Ladakh
+    "IND-2474": "South",          # Andaman and Nicobar Islands
 }
