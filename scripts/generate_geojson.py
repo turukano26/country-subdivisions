@@ -24,6 +24,8 @@ ADMIN1_SHP = (
     / "ne_10m_admin_1_states_provinces.shp"
 )
 
+from corrections import REGION_OVERRIDES
+
 
 def generate_world_geojson(admin0_path: Path, output_path: Path) -> None:
     """Generate a lightweight world.geojson for the homepage map."""
@@ -92,9 +94,14 @@ def generate_country_geojsons(admin1_path: Path, output_dir: Path, db_path: Path
             # --- Level 1: dissolve by region ---
             region_col = "region"
             if region_col in group.columns:
-                # Keep only rows with a valid region
-                with_region = group[group[region_col].notna()].copy()
-                with_region["region_name"] = with_region[region_col].astype(str).str.strip()
+                with_region = group.copy()
+                # Apply manual overrides before falling back to the shapefile value
+                override_mask = with_region["adm1_code"].isin(REGION_OVERRIDES)
+                with_region.loc[override_mask, region_col] = (
+                    with_region.loc[override_mask, "adm1_code"].map(REGION_OVERRIDES)
+                )
+                # Fall back to the feature's own name when region is still null
+                with_region["region_name"] = with_region[region_col].fillna(with_region["name"]).astype(str).str.strip()
 
                 dissolved = with_region.dissolve(by="region_name", as_index=False)
                 # Create a synthetic adm1_code for each region

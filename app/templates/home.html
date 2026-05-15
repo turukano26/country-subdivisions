@@ -70,7 +70,7 @@
 <script>
 const COUNTRIES = [
     {% for c in countries %}
-    {code: "{{ c.adm0_a3 }}", name: "{{ c.name|e }}", type: "{{ c.subdivision_type|e }}", count: {{ c.sub_count }}},
+    {code: "{{ c.adm0_a3 }}", name: "{{ c.name|e }}", type: "{{ c.subdivision_type|e }}", count: {{ c.sub_count }}, hasLevels: {{ 'true' if c.has_levels else 'false' }}, defaultLevel: {{ c.default_level }}},
     {% endfor %}
 ];
 const countryLookup = {};
@@ -126,8 +126,9 @@ fetch('/api/world.geojson')
                 const info = countryLookup[code];
 
                 if (info) {
+                    const typeLabel = (info.hasLevels && info.defaultLevel === 1) ? 'region' : info.type;
                     layer.bindTooltip(
-                        `<strong>${info.name}</strong><br>${info.count} ${info.type}s`,
+                        `<strong>${info.name}</strong><br>${info.count} ${typeLabel}s`,
                         {sticky: true}
                     );
                     layer.on('mouseover', function() { this.setStyle(hoverStyle); this.bringToFront(); });
@@ -160,9 +161,10 @@ searchInput.addEventListener('input', function() {
         searchResults.style.display = 'none';
         return;
     }
-    searchResults.innerHTML = matches.map(c =>
-        `<a href="/country/${c.code}">${c.name} <span class="sub-count">(${c.count} ${c.type}s)</span></a>`
-    ).join('');
+    searchResults.innerHTML = matches.map(c => {
+        const typeLabel = (c.hasLevels && c.defaultLevel === 1) ? 'region' : c.type;
+        return `<a href="/country/${c.code}">${c.name} <span class="sub-count">(${c.count} ${typeLabel}s)</span></a>`;
+    }).join('');
     searchResults.style.display = 'block';
 });
 

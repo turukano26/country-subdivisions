@@ -11,7 +11,7 @@ bp = Blueprint("home", __name__)
 def index():
     db = get_db()
     countries = db.execute(
-        "SELECT adm0_a3, name, subdivision_type, sub_count FROM countries ORDER BY name"
+        "SELECT adm0_a3, name, subdivision_type, sub_count, has_levels, default_level FROM countries ORDER BY name"
     ).fetchall()
     return render_template("home.html", countries=countries)
 

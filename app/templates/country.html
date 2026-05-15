@@ -143,7 +143,7 @@
     {% if has_levels %}
     <div class="level-switcher">
         {% for lvl, data in levels.items() %}
-        <button class="level-btn{% if lvl == 1 %} active{% endif %}" data-level="{{ lvl }}">
+        <button class="level-btn{% if lvl == default_level %} active{% endif %}" data-level="{{ lvl }}">
             {% set type_label = data.type_counts.keys()|list|first|default('subdivision') %}
             {{ data.subdivisions|length }} {{ type_label }}{{ 's' if data.subdivisions|length != 1 }}
         </button>
@@ -170,7 +170,7 @@
                     <tr><th>Name</th><th>Type</th></tr>
                 </thead>
                 {% for lvl, data in levels.items() %}
-                <tbody id="sub-tbody-{{ lvl }}" class="sub-tbody" {% if has_levels and lvl != 1 %}style="display: none"{% endif %}>
+                <tbody id="sub-tbody-{{ lvl }}" class="sub-tbody" {% if has_levels and lvl != default_level %}style="display: none"{% endif %}>
                     {% for s in data.subdivisions %}
                     <tr data-code="{{ s.adm1_code }}" data-name="{{ s.name|lower }}">
                         <td>{{ s.name }}</td>
@@ -192,7 +192,7 @@
 <script>
 const ADM0 = "{{ country.adm0_a3 }}";
 const HAS_LEVELS = {{ 'true' if has_levels else 'false' }};
-let currentLevel = 1;
+let currentLevel = 1;  // will be set by loadLevel() below
 
 const map = L.map('map', { zoomSnap: 0.25 });
 
@@ -333,7 +333,7 @@ document.querySelectorAll('.level-btn').forEach(btn => {
 });
 
 // Initial load
-loadLevel(1);
+loadLevel({{ default_level }});
 
 // Table row clicks (use event delegation on all tbodies)
 document.querySelectorAll('.sub-tbody').forEach(tbody => {

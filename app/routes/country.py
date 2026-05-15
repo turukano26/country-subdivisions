@@ -50,11 +50,14 @@ def detail(adm0_a3):
             type_counts[t] = type_counts.get(t, 0) + 1
         levels[1] = {"subdivisions": subs, "type_counts": type_counts}
 
+    default_level = country["default_level"]
+
     return render_template(
         "country.html",
         country=country,
         levels=levels,
         has_levels=has_levels,
+        default_level=default_level,
     )
 
 

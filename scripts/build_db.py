@@ -39,6 +39,8 @@ ADMIN1_SHP = (
     / "ne_10m_admin_1_states_provinces.shp"
 )
 
+from corrections import DEFAULT_LEVEL_1, REGION_OVERRIDES
+
 MIN_SUBDIVISIONS = 2  # Skip countries with fewer than this many subdivisions
 
 # Thresholds for detecting two-level countries
@@ -55,7 +57,8 @@ CREATE TABLE IF NOT EXISTS countries (
     subdivision_type TEXT,
     geojson_path    TEXT,
     sub_count       INTEGER DEFAULT 0,
-    has_levels      INTEGER DEFAULT 0
+    has_levels      INTEGER DEFAULT 0,
+    default_level   INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS subdivisions (
@@ -68,7 +71,8 @@ CREATE TABLE IF NOT EXISTS subdivisions (
     type            TEXT,
     type_en         TEXT,
     image_path      TEXT,
-    level           INTEGER NOT NULL DEFAULT 1
+    level           INTEGER NOT NULL DEFAULT 1,
+    no_parent       INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_subdivisions_country ON subdivisions(country_id);
@@ -136,6 +140,14 @@ def is_junk_record(row) -> bool:
     return False
 
 
+def get_region(row) -> str | None:
+    """Return the region for a row, applying manual overrides before the shapefile value."""
+    adm1_code = clean_str(row.get("adm1_code"))
+    if adm1_code and adm1_code in REGION_OVERRIDES:
+        return REGION_OVERRIDES[adm1_code]
+    return clean_str(row.get("region"))
+
+
 def best_name(row) -> str:
     """Pick the best available name, preferring name_en over name."""
     return clean_str(row.get("name_en")) or clean_str(row.get("name")) or "Unknown"
@@ -150,9 +162,8 @@ def detect_two_level_countries(grouped: dict) -> dict[str, list[str]]:
     for code, rows in grouped.items():
         regions = set()
         for r in rows:
-            region = clean_str(r.get("region"))
-            if region:
-                regions.add(region)
+            region = get_region(r) or best_name(r)
+            regions.add(region)
 
         n_regions = len(regions)
         n_subs = len(rows)
@@ -201,13 +212,16 @@ def populate(conn: sqlite3.Connection, admin1: gpd.GeoDataFrame, country_lookup:
         info = country_lookup.get(code, {})
         country_name = info.get("name") or clean_str(rows[0].get("admin")) or code
 
-        # For two-level countries, sub_count reflects level 1 count
-        sub_count = len(two_level[code]) if has_levels else len(rows)
+        default_level = 1 if (has_levels and code in DEFAULT_LEVEL_1) else (2 if has_levels else 1)
+        if has_levels:
+            sub_count = len(two_level[code]) if default_level == 1 else len(rows)
+        else:
+            sub_count = len(rows)
 
         conn.execute(
             """INSERT OR REPLACE INTO countries
-               (adm0_a3, iso_a2, name, name_short, subdivision_type, sub_count, has_levels)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+               (adm0_a3, iso_a2, name, name_short, subdivision_type, sub_count, has_levels, default_level)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 code,
                 info.get("iso_a2"),
@@ -216,6 +230,7 @@ def populate(conn: sqlite3.Connection, admin1: gpd.GeoDataFrame, country_lookup:
                 modal_type,
                 sub_count,
                 1 if has_levels else 0,
+                default_level,
             ),
         )
         country_id = conn.execute(
@@ -237,6 +252,7 @@ def populate(conn: sqlite3.Connection, admin1: gpd.GeoDataFrame, country_lookup:
             name = best_name(row)
             name_local = clean_str(row.get("name_local"))
             raw_type = clean_str(row.get("type")) or clean_str(row.get("type_en"))
+            no_parent = 1 if (has_levels and not get_region(row)) else 0
 
             # Disambiguate duplicate names by appending the type
             if name in duped_names and raw_type:
@@ -244,9 +260,9 @@ def populate(conn: sqlite3.Connection, admin1: gpd.GeoDataFrame, country_lookup:
 
             conn.execute(
                 """INSERT OR REPLACE INTO subdivisions
-                   (country_id, adm1_code, iso_3166_2, name, name_local, type, type_en, level)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (country_id, adm1_code, iso_3166_2, name, name_local, raw_type, type_en, level),
+                   (country_id, adm1_code, iso_3166_2, name, name_local, type, type_en, level, no_parent)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (country_id, adm1_code, iso_3166_2, name, name_local, raw_type, type_en, level, no_parent),
             )
             subdivisions_inserted += 1
 
