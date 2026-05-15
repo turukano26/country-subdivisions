@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}{{ country.name }} — Country Subdivisions Anki{% endblock %}
+
+{% block extra_style %}
+.country-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+.country-header h1 { margin: 0; }
+.type-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+.type-badge {
+    background: #e8f0fe;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    color: #2c7be5;
+}
+.type-badge strong { color: #1a5bb5; }
+.level-switcher {
+    display: flex;
+    gap: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid #d0d5dd;
+}
+.level-btn {
+    padding: 0.45rem 1rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: none;
+    background: #f8f9fb;
+    color: #5a6a7a;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.level-btn:not(:last-child) { border-right: 1px solid #d0d5dd; }
+.level-btn.active { background: #2c7be5; color: #fff; }
+.level-btn:hover:not(.active) { background: #e8f0fe; }
+.layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+@media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+}
+#map { height: 65vh; min-height: 400px; }
+.sidebar {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e0e4e8;
+    display: flex;
+    flex-direction: column;
+    max-height: 75vh;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.sidebar-header {
+    padding: 1rem;
+    border-bottom: 1px solid #e0e4e8;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.sidebar-header input {
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    border: 1px solid #d0d5dd;
+    background: #f8f9fb;
+    color: #2c3e50;
+    font-size: 0.9rem;
+    width: 100%;
+}
+.sidebar-header input::placeholder { color: #9aa5b1; }
+.sub-list {
+    overflow-y: auto;
+    flex: 1;
+}
+.sub-list table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.sub-list th {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    text-align: left;
+    padding: 0.6rem 1rem;
+    border-bottom: 2px solid #e0e4e8;
+    font-size: 0.85rem;
+    color: #7b8a9a;
+    text-transform: uppercase;
+}
+.sub-list td {
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid #f0f2f5;
+    font-size: 0.9rem;
+}
+.sub-list tr { cursor: pointer; transition: background 0.15s; }
+.sub-list tr:hover { background: #f0f6ff; }
+.sub-list tr.active { background: #2c7be5; color: #fff; }
+.sub-list tr.active td { color: #fff; }
+.sub-type { color: #7b8a9a; font-size: 0.8rem; }
+.download-section {
+    padding: 1rem;
+    border-top: 1px solid #e0e4e8;
+    text-align: center;
+}
+.btn { width: 100%; text-align: center; }
+.back-link { margin-bottom: 0.5rem; display: inline-block; }
+.subdivision-label {
+    background: none;
+    border: none;
+    box-shadow: none;
+    pointer-events: none;
+    overflow: visible;
+}
+.subdivision-label span {
+    display: inline-block;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: 600;
+    color: #2c3e50;
+    text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff,
+                 0 -1px 0 #fff, 0 1px 0 #fff, -1px 0 0 #fff, 1px 0 0 #fff;
+    white-space: nowrap;
+}
+{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">&larr; Back to world map</a>
+
+<div class="country-header">
+    <h1>{{ country.name }}</h1>
+    {% if has_levels %}
+    <div class="level-switcher">
+        {% for lvl, data in levels.items() %}
+        <button class="level-btn{% if lvl == 1 %} active{% endif %}" data-level="{{ lvl }}">
+            {% set type_label = data.type_counts.keys()|list|first|default('subdivision') %}
+            {{ data.subdivisions|length }} {{ type_label }}{{ 's' if data.subdivisions|length != 1 }}
+        </button>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="type-badges">
+        {% for type_name, count in levels[1].type_counts.items() %}
+        <span class="type-badge"><strong>{{ count }}</strong> {{ type_name }}{{ 's' if count != 1 }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<div class="layout">
+    <div id="map"></div>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <input type="text" id="sub-filter" placeholder="Filter subdivisions...">
+        </div>
+        <div class="sub-list">
+            <table>
+                <thead>
+                    <tr><th>Name</th><th>Type</th></tr>
+                </thead>
+                {% for lvl, data in levels.items() %}
+                <tbody id="sub-tbody-{{ lvl }}" class="sub-tbody" {% if has_levels and lvl != 1 %}style="display: none"{% endif %}>
+                    {% for s in data.subdivisions %}
+                    <tr data-code="{{ s.adm1_code }}" data-name="{{ s.name|lower }}">
+                        <td>{{ s.name }}</td>
+                        <td class="sub-type">{{ s.type_en or 'subdivision' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% endfor %}
+            </table>
+        </div>
+        <div class="download-section">
+            <a href="/country/{{ country.adm0_a3 }}/deck" class="btn">Download Anki Deck</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ADM0 = "{{ country.adm0_a3 }}";
+const HAS_LEVELS = {{ 'true' if has_levels else 'false' }};
+let currentLevel = 1;
+
+const map = L.map('map', { zoomSnap: 0.25 });
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OSM &copy; CARTO',
+    maxZoom: 19
+}).addTo(map);
+
+const defaultStyle = {
+    fillColor: '#b8d4f0',
+    weight: 1.5,
+    opacity: 1,
+    color: '#fff',
+    fillOpacity: 0.55
+};
+const hoverStyle = {
+    fillColor: '#5b9bd5',
+    weight: 2,
+    color: '#2c7be5',
+    fillOpacity: 0.7
+};
+const activeStyle = {
+    fillColor: '#2c7be5',
+    weight: 2.5,
+    color: '#1a5bb5',
+    fillOpacity: 0.8
+};
+
+let geojsonLayer = null;
+let activeLayer = null;
+let layersByCode = {};
+const labelLayer = L.layerGroup().addTo(map);
+
+function selectSubdivision(code) {
+    if (activeLayer) {
+        geojsonLayer.resetStyle(activeLayer);
+    }
+    const layer = layersByCode[code];
+    if (layer) {
+        layer.setStyle(activeStyle);
+        layer.bringToFront();
+        activeLayer = layer;
+    }
+    const tbody = document.getElementById('sub-tbody-' + currentLevel);
+    tbody.querySelectorAll('tr').forEach(tr => {
+        tr.classList.toggle('active', tr.dataset.code === code);
+    });
+    const activeRow = tbody.querySelector('tr.active');
+    if (activeRow) {
+        activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+}
+
+function loadLevel(level) {
+    currentLevel = level;
+    activeLayer = null;
+    layersByCode = {};
+
+    // Clear existing layers
+    if (geojsonLayer) {
+        map.removeLayer(geojsonLayer);
+    }
+    labelLayer.clearLayers();
+
+    // Build the GeoJSON URL
+    let url;
+    if (HAS_LEVELS) {
+        url = `/api/country/${ADM0}.geojson?level=${level}`;
+    } else {
+        url = `/api/country/${ADM0}.geojson`;
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            geojsonLayer = L.geoJSON(data, {
+                style: defaultStyle,
+                onEachFeature: function(feature, layer) {
+                    const code = feature.properties.adm1_code;
+                    const name = feature.properties.name || 'Unknown';
+                    const labelLat = feature.properties.label_lat;
+                    const labelLon = feature.properties.label_lon;
+                    layersByCode[code] = layer;
+
+                    if (labelLat != null && labelLon != null) {
+                        const labelMarker = L.marker([labelLat, labelLon], {
+                            icon: L.divIcon({
+                                className: 'subdivision-label',
+                                html: `<span>${name}</span>`,
+                                iconSize: [0, 0],
+                                iconAnchor: [0, 0]
+                            }),
+                            interactive: false
+                        });
+                        labelLayer.addLayer(labelMarker);
+                    }
+
+                    layer.on('mouseover', function() {
+                        if (activeLayer !== this) {
+                            this.setStyle(hoverStyle);
+                            this.bringToFront();
+                            if (activeLayer) activeLayer.bringToFront();
+                        }
+                    });
+                    layer.on('mouseout', function() {
+                        if (activeLayer !== this) {
+                            geojsonLayer.resetStyle(this);
+                        }
+                    });
+                    layer.on('click', function() {
+                        selectSubdivision(code);
+                    });
+                }
+            }).addTo(map);
+            map.fitBounds(geojsonLayer.getBounds(), { padding: [20, 20] });
+        });
+
+    // Show/hide table bodies
+    if (HAS_LEVELS) {
+        document.querySelectorAll('.sub-tbody').forEach(tb => {
+            tb.style.display = tb.id === 'sub-tbody-' + level ? '' : 'none';
+        });
+    }
+
+    // Clear filter
+    document.getElementById('sub-filter').value = '';
+    const tbody = document.getElementById('sub-tbody-' + level);
+    tbody.querySelectorAll('tr').forEach(tr => { tr.style.display = ''; });
+}
+
+// Level switcher buttons
+document.querySelectorAll('.level-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        loadLevel(parseInt(this.dataset.level));
+    });
+});
+
+// Initial load
+loadLevel(1);
+
+// Table row clicks (use event delegation on all tbodies)
+document.querySelectorAll('.sub-tbody').forEach(tbody => {
+    tbody.addEventListener('click', function(e) {
+        const tr = e.target.closest('tr');
+        if (tr && tr.dataset.code) {
+            selectSubdivision(tr.dataset.code);
+            const layer = layersByCode[tr.dataset.code];
+            if (layer) {
+                map.fitBounds(layer.getBounds(), { padding: [50, 50], maxZoom: 8 });
+            }
+        }
+    });
+});
+
+// Filter
+document.getElementById('sub-filter').addEventListener('input', function() {
+    const q = this.value.toLowerCase().trim();
+    const tbody = document.getElementById('sub-tbody-' + currentLevel);
+    tbody.querySelectorAll('tr').forEach(tr => {
+        tr.style.display = tr.dataset.name.includes(q) ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

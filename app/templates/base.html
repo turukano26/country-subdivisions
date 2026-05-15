@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Country Subdivisions Anki{% endblock %}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            color: #2c3e50;
+            min-height: 100vh;
+        }
+        header {
+            background: #fff;
+            padding: 1rem 2rem;
+            border-bottom: 2px solid #e0e4e8;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        header a {
+            color: #2c7be5;
+            text-decoration: none;
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        header a:hover { color: #1a5bb5; }
+        header .subtitle {
+            color: #7b8a9a;
+            font-size: 0.9rem;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+        h1, h2 { color: #2c3e50; }
+        a { color: #2c7be5; }
+        a:hover { color: #1a5bb5; }
+        .btn {
+            display: inline-block;
+            padding: 0.7rem 1.5rem;
+            background: #2c7be5;
+            color: #fff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #1a5bb5; color: #fff; }
+        #map {
+            width: 100%;
+            border-radius: 8px;
+            border: 2px solid #e0e4e8;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+    <header>
+        <a href="/">Country Subdivisions Anki</a>
+        <span class="subtitle">Learn the world's administrative divisions</span>
+    </header>
+    <div class="container">
+        {% block content %}{% endblock %}
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

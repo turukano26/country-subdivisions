@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}World Map — Country Subdivisions Anki{% endblock %}
+
+{% block extra_style %}
+#map { height: 75vh; }
+.info-panel {
+    margin-top: 1rem;
+    display: flex;
+    gap: 2rem;
+    align-items: center;
+}
+.info-panel .stat {
+    background: #fff;
+    padding: 0.6rem 1.2rem;
+    border-radius: 6px;
+    border: 1px solid #e0e4e8;
+}
+.info-panel .stat strong { color: #2c7be5; }
+.search-box {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+}
+.search-box input {
+    padding: 0.6rem 1rem;
+    width: 300px;
+    border-radius: 6px;
+    border: 1px solid #d0d5dd;
+    background: #fff;
+    color: #2c3e50;
+    font-size: 1rem;
+}
+.search-box input::placeholder { color: #9aa5b1; }
+.search-results {
+    display: none;
+    position: absolute;
+    background: #fff;
+    border: 1px solid #d0d5dd;
+    border-radius: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+    width: 300px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.search-results a {
+    display: block;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    color: #2c3e50;
+    border-bottom: 1px solid #f0f2f5;
+}
+.search-results a:hover { background: #f0f6ff; }
+.search-results a .sub-count { color: #7b8a9a; font-size: 0.85rem; }
+{% endblock %}
+
+{% block content %}
+<div class="search-box" style="position: relative;">
+    <input type="text" id="country-search" placeholder="Search countries..." autocomplete="off">
+    <div class="search-results" id="search-results"></div>
+</div>
+<div id="map"></div>
+<div class="info-panel">
+    <div class="stat"><strong>{{ countries|length }}</strong> countries</div>
+    <div class="stat"><strong>{{ countries|map(attribute='sub_count')|sum }}</strong> subdivisions</div>
+    <div class="stat">Click a country to explore its subdivisions</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const COUNTRIES = [
+    {% for c in countries %}
+    {code: "{{ c.adm0_a3 }}", name: "{{ c.name|e }}", type: "{{ c.subdivision_type|e }}", count: {{ c.sub_count }}},
+    {% endfor %}
+];
+const countryLookup = {};
+COUNTRIES.forEach(c => { countryLookup[c.code] = c; });
+
+// --- Map ---
+const map = L.map('map', {
+    center: [20, 0],
+    zoom: 2,
+    minZoom: 2,
+    maxZoom: 7,
+    worldCopyJump: true
+});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19
+}).addTo(map);
+
+const defaultStyle = {
+    fillColor: '#5b9bd5',
+    weight: 1,
+    opacity: 1,
+    color: '#fff',
+    fillOpacity: 0.55
+};
+const hoverStyle = {
+    fillColor: '#2c7be5',
+    weight: 2,
+    color: '#1a5bb5',
+    fillOpacity: 0.75
+};
+const noDataStyle = {
+    fillColor: '#d5dbe3',
+    weight: 1,
+    opacity: 0.8,
+    color: '#fff',
+    fillOpacity: 0.4
+};
+
+let geojsonLayer;
+
+fetch('/api/world.geojson')
+    .then(r => r.json())
+    .then(data => {
+        geojsonLayer = L.geoJSON(data, {
+            style: function(feature) {
+                const code = feature.properties.adm0_a3;
+                return countryLookup[code] ? defaultStyle : noDataStyle;
+            },
+            onEachFeature: function(feature, layer) {
+                const code = feature.properties.adm0_a3;
+                const info = countryLookup[code];
+
+                if (info) {
+                    layer.bindTooltip(
+                        `<strong>${info.name}</strong><br>${info.count} ${info.type}s`,
+                        {sticky: true}
+                    );
+                    layer.on('mouseover', function() { this.setStyle(hoverStyle); this.bringToFront(); });
+                    layer.on('mouseout', function() { geojsonLayer.resetStyle(this); });
+                    layer.on('click', function() {
+                        window.location.href = '/country/' + code;
+                    });
+                } else {
+                    layer.bindTooltip(
+                        `<strong>${feature.properties.name || code}</strong><br><em>No subdivision data</em>`,
+                        {sticky: true}
+                    );
+                }
+            }
+        }).addTo(map);
+    });
+
+// --- Search ---
+const searchInput = document.getElementById('country-search');
+const searchResults = document.getElementById('search-results');
+
+searchInput.addEventListener('input', function() {
+    const q = this.value.toLowerCase().trim();
+    if (q.length < 1) {
+        searchResults.style.display = 'none';
+        return;
+    }
+    const matches = COUNTRIES.filter(c => c.name.toLowerCase().includes(q)).slice(0, 15);
+    if (matches.length === 0) {
+        searchResults.style.display = 'none';
+        return;
+    }
+    searchResults.innerHTML = matches.map(c =>
+        `<a href="/country/${c.code}">${c.name} <span class="sub-count">(${c.count} ${c.type}s)</span></a>`
+    ).join('');
+    searchResults.style.display = 'block';
+});
+
+document.addEventListener('click', function(e) {
+    if (!searchInput.contains(e.target) && !searchResults.contains(e.target)) {
+        searchResults.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,1 @@
+- [Use poetry](feedback_use_poetry.md) — User prefers poetry over venv/pip for Python dependency management
